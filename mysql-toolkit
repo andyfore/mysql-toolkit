@@ -1,0 +1,70 @@
+#!/bin/bash
+
+## Variables
+
+BACKUP_DIR="/opt/mysql_backup/`date +"%F"`"
+MYSQL=`which mysql`
+MYSQLDUMP=`which mysqldump`
+
+## Functions
+
+dump_grants()
+{
+  mysql --user=$MYSQL_USER -p$MYSQL_PASSWORD -B -N $@ -e "SELECT DISTINCT CONCAT(
+    'SHOW GRANTS FOR \'', user, '\'@\'', host, '\';'
+    ) AS query FROM mysql.user" | \
+  mysql --user=$MYSQL_USER -p$MYSQL_PASSWORD $@ | \
+  sed 's/\(GRANT .*\)/\1;/;s/^\(Grants for .*\)/## \1 ##/;/##/{x;p;x;}'
+}
+
+## Main
+
+# Check for export of user grants
+while getopts "gu:" opt; do
+	case $opt in
+		g)b1="dump_grants";;
+		u)MYSQL_USER=$OPTARG;;
+	esac
+done
+
+# Check for username, assume root if null/emptystring
+if [ -z "$MYSQL_USER" ]; then
+    echo "No username entered, assuming root user."
+	MYSQL_USER="root"
+	echo ""
+fi
+
+# Request user password
+# Exit if no password entered
+read -p "Please enter the DB password: " MYSQL_PASSWORD
+if [ -z "$MYSQL_PASSWORD" ]; then
+	echo "No password entered."
+    	echo "Not having a user password is bad security."
+	echo "Exiting..."
+	exit
+fi
+
+# Check for backup directory and create if necessary
+if [ ! -d $BACKUP_DIR ]; then
+	mkdir -p $BACKUP_DIR
+fi
+
+# Dump the user grants if requested at runtime
+if [ -n "$b1" ]; then
+	# Get the user grants and dump to a file
+	if [ -f $BACKUP_DIR/user_grants.txt ]
+	then
+		dump_grants > $BACKUP_DIR/user_grants.txt
+	else
+		dump_grants >> $BACKUP_DIR/user_grants.txt
+	fi
+fi
+
+# Get the list of databases
+databases=`$MYSQL --user=$MYSQL_USER -p$MYSQL_PASSWORD -e "SHOW DATABASES;" | grep -Ev "(Database|mysql|information_schema|performance_schema)"`
+
+# Dump each database to a separate file
+for db in $databases; do
+	$MYSQLDUMP --force --opt --user=$MYSQL_USER -p$MYSQL_PASSWORD --databases $db > $BACKUP_DIR/$db.sql
+	gzip -9 "$BACKUP_DIR/$db.sql"
+done

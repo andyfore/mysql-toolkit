@@ -5,6 +5,7 @@
 BACKUP_DIR="/opt/mysql_backup/`date +"%F"`"
 MYSQL=`which mysql`
 MYSQLDUMP=`which mysqldump`
+FORCE=false
 
 ## Functions
 
@@ -20,8 +21,9 @@ dump_grants()
 ## Main
 
 # Check for export of user grants
-while getopts "gu:" opt; do
+while getopts "fgu:" opt; do
 	case $opt in
+		f)FORCE=true;;
 		g)b1="dump_grants";;
 		u)MYSQL_USER=$OPTARG;;
 	esac
@@ -36,12 +38,17 @@ fi
 
 # Request user password
 # Exit if no password entered
-read -p "Please enter the DB password: " MYSQL_PASSWORD
-if [ -z "$MYSQL_PASSWORD" ]; then
-	echo "No password entered."
-    	echo "Not having a user password is bad security."
-	echo "Exiting..."
-	exit
+read -p "Please enter the DB user password: " MYSQL_PASSWORD
+if [ -z $MYSQL_PASSWORD ]; then
+	if [ $FORCE = false ]; then
+		echo "No user password entered."
+		echo "Not having a user password is bad security."
+		exit
+	else
+		echo "No user password enterd."
+		echo "Force mode specified."
+		echo "Attempting to continue."
+	fi
 fi
 
 # Check for backup directory and create if necessary
